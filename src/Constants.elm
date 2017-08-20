@@ -20,6 +20,11 @@ villagerSize =
     tileSize / 2
 
 
+resourceSitePixelWidth : Float
+resourceSitePixelWidth =
+    tileSize * 10
+
+
 roadPixelWidth : Float
 roadPixelWidth =
-    roadTileLength * tileSize
+    roadTileLength * tileSize + villagerSize

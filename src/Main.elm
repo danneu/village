@@ -325,7 +325,7 @@ viewVillager villager =
 
 viewResourceSite : Element.Element -> Element.Element
 viewResourceSite =
-    Element.container 125 20 Element.midRight
+    Element.container (round Constants.resourceSitePixelWidth) 20 Element.midRight
 
 
 viewFarm : List Villager -> Element.Element
@@ -375,6 +375,15 @@ viewRoad villagers =
             [ [ Element.empty
                     |> Element.width roadPixelWidth
                     |> Element.height roadPixelHeight
+              , Element.container
+                    roadPixelWidth
+                    roadPixelHeight
+                    Element.midLeft
+                    (Element.empty
+                        |> Element.width roadPixelWidth
+                        |> Element.height (roadPixelHeight // 2)
+                        |> Element.color Color.lightBrown
+                    )
               ]
             , List.map
                 (\villager ->
@@ -408,12 +417,6 @@ viewRoad villagers =
             ]
 
 
-viewVillage : Element.Element
-viewVillage =
-    Text.fromString "[Village]"
-        |> Element.centered
-
-
 viewPrice : Price.Price -> String
 viewPrice { gold, food } =
     case ( gold, food ) of
@@ -430,6 +433,19 @@ viewPrice { gold, food } =
             "(" ++ toString gold ++ " gold, " ++ toString food ++ " food)"
 
 
+viewVillage : Model -> Element.Element
+viewVillage model =
+    Element.container
+        200
+        60
+        Element.midTop
+        (Element.flow Element.down
+            [ Text.fromString "[Village]" |> Element.centered
+            ]
+        )
+        |> Element.color Color.lightBrown
+
+
 view : Model -> Html Msg
 view model =
     Html.div
@@ -439,19 +455,27 @@ view model =
         , Html.text <| "Food: " ++ toString model.food
         , Html.text " "
         , Html.text <| "Population: " ++ toString (List.length model.villagers) ++ "/" ++ toString (model.houses * 3)
-        , Element.flow Element.down
-            [ Element.flow Element.right
-                [ viewResourceSite <| viewFarm model.villagers
-                , viewRoad (List.filter Villager.isFarmer model.villagers)
-                , viewVillage
-                ]
-                |> Element.color Color.lightBlue
-            , Element.flow Element.right
-                [ viewResourceSite <| viewGoldMine model.villagers
-                , viewRoad (List.filter Villager.isMiner model.villagers)
-                , viewVillage
-                ]
-                |> Element.color Color.lightPurple
+        , Element.flow Element.right
+            [ Element.container
+                (round (Constants.resourceSitePixelWidth + Constants.roadPixelWidth))
+                60
+                Element.bottomLeft
+                (Element.flow Element.down
+                    [ Element.flow Element.right
+                        [ viewResourceSite <| viewFarm model.villagers
+                        , viewRoad (List.filter Villager.isFarmer model.villagers)
+                        ]
+
+                    --|> Element.color Color.lightBlue
+                    , Element.flow Element.right
+                        [ viewResourceSite <| viewGoldMine model.villagers
+                        , viewRoad (List.filter Villager.isMiner model.villagers)
+                        ]
+
+                    --|> Element.color Color.lightPurple
+                    ]
+                )
+            , viewVillage model
             ]
             |> Element.toHtml
 
