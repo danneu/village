@@ -9,7 +9,9 @@ import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Job
+import Price
 import Resource
+import Soldier
 import Text
 import Time exposing (Time)
 import Villager exposing (Villager)
@@ -18,22 +20,30 @@ import Villager exposing (Villager)
 -- MODEL
 
 
+type alias Soldier =
+    {}
+
+
 type alias Position =
     ( Float, Float )
 
 
 type alias Model =
     { villagers : List Villager
+    , soldiers : List Soldier.Soldier
     , gold : Int
     , food : Int
+    , houses : Int
     }
 
 
 init : ( Model, Cmd Msg )
 init =
     ( { villagers = []
-      , gold = 0
-      , food = 0
+      , soldiers = []
+      , gold = 10
+      , food = 3
+      , houses = 1
       }
     , Cmd.none
     )
@@ -43,10 +53,15 @@ init =
 -- UPDATE
 
 
+type Structure
+    = House
+
+
 type Msg
     = NoOp
     | Tick Time
     | SpawnVillager Job.Job
+    | Build Structure
     | TimeTravel Time
 
 
@@ -100,22 +115,13 @@ updateVillager dt villager =
                 )
 
         Villager.Moving direction ( x, y ) ->
-            let
-                ( movedX, movedY ) =
-                    case direction of
-                        Direction.Left ->
-                            ( x - (dt * villager.movingSpeed), y )
-
-                        Direction.Right ->
-                            ( x + (dt * villager.movingSpeed), y )
-            in
             case direction of
                 Direction.Left ->
-                    if movedX <= 0 then
+                    if x <= 0 then
                         -- Reached the resource area, so enter it and start harvesting
                         let
                             overflow =
-                                abs (0 - movedX)
+                                negate x
 
                             newAction =
                                 case villager.job of
@@ -133,18 +139,18 @@ updateVillager dt villager =
                         -- Still walking left
                         ( 0
                         , 0
-                        , { villager | action = Villager.Moving Direction.Left ( movedX, movedY ) }
+                        , { villager | action = Villager.Moving Direction.Left ( x - (dt * villager.movingSpeed), y ) }
                         )
 
                 Direction.Right ->
-                    if movedX >= Constants.roadTileLength then
+                    if x >= Constants.roadTileLength then
                         let
                             overflow =
-                                movedX - Constants.roadTileLength
+                                x - Constants.roadTileLength
 
                             newVillager =
                                 { villager
-                                    | action = Villager.Moving Direction.Left ( Constants.roadTileLength - overflow, movedY )
+                                    | action = Villager.Moving Direction.Left ( Constants.roadTileLength - overflow, y )
                                     , carrying = Nothing
                                 }
                         in
@@ -162,8 +168,23 @@ updateVillager dt villager =
                         -- Still walking right
                         ( 0
                         , 0
-                        , { villager | action = Villager.Moving Direction.Right ( movedX, movedY ) }
+                        , { villager | action = Villager.Moving Direction.Right ( x + (dt * villager.movingSpeed), y ) }
                         )
+
+
+{-| Subtracts price from model resources
+-}
+applyPrice : Price.Price -> Model -> Model
+applyPrice { food, gold } model =
+    { model
+        | food = model.food - food
+        , gold = model.gold - gold
+    }
+
+
+canAfford : Price.Price -> Model -> Bool
+canAfford { food, gold } model =
+    model.food >= food && model.gold >= gold
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -172,11 +193,32 @@ update msg model =
         NoOp ->
             ( model, Cmd.none )
 
+        Build structure ->
+            let
+                price =
+                    case structure of
+                        House ->
+                            Price.priceOfHouse model.houses
+
+                newModel =
+                    case structure of
+                        House ->
+                            { model
+                                | houses = model.houses + 1
+                            }
+            in
+            ( applyPrice price newModel
+            , Cmd.none
+            )
+
         TimeTravel diff ->
             update (Tick diff) model
 
         SpawnVillager job ->
             let
+                price =
+                    Price.priceOfVillager (List.length model.villagers)
+
                 villager =
                     { action = Villager.Moving Direction.Left ( Constants.roadTileLength, 0 )
                     , carrying = Nothing
@@ -189,6 +231,7 @@ update msg model =
             ( { model
                 | villagers = villager :: model.villagers
               }
+                |> applyPrice price
             , Cmd.none
             )
 
@@ -196,12 +239,6 @@ update msg model =
             let
                 dt =
                     Time.inSeconds diff
-
-                _ =
-                    if dt > 1 then
-                        Debug.log "==================== dt" dt
-                    else
-                        dt
 
                 ( deltaGold, deltaFood, newVillagers ) =
                     List.foldl
@@ -354,6 +391,22 @@ viewVillage =
         |> Element.centered
 
 
+viewPrice : Price.Price -> String
+viewPrice { gold, food } =
+    case ( gold, food ) of
+        ( 0, 0 ) ->
+            "(Free)"
+
+        ( _, 0 ) ->
+            "(" ++ toString gold ++ " gold)"
+
+        ( 0, _ ) ->
+            "(" ++ toString food ++ " food)"
+
+        ( _, _ ) ->
+            "(" ++ toString gold ++ " gold, " ++ toString food ++ " food)"
+
+
 view : Model -> Html Msg
 view model =
     Html.div
@@ -361,6 +414,8 @@ view model =
         [ Html.text <| "Gold: " ++ toString model.gold
         , Html.text " "
         , Html.text <| "Food: " ++ toString model.food
+        , Html.text " "
+        , Html.text <| "Population: " ++ toString (List.length model.villagers) ++ "/" ++ toString (model.houses * 3)
         , Element.flow Element.down
             [ Element.flow Element.right
                 [ viewResourceSite <| viewFarm model.villagers
@@ -374,24 +429,68 @@ view model =
                 ]
             ]
             |> Element.toHtml
-        , Html.span
-            []
-            [ Html.text "Spawn: " ]
-        , Html.button
-            [ Html.Events.onClick (SpawnVillager Job.Farmer) ]
-            [ Html.text "Farmer " ]
-        , Html.button
-            [ Html.Events.onClick (SpawnVillager Job.Miner) ]
-            [ Html.text "Miner" ]
+
+        -- BUILD
         , Html.div
             []
-            [ Html.text "TimeTravel: "
+            [ Html.text "Build: "
+            , let
+                price =
+                    Price.priceOfHouse model.houses
+
+                unaffordable =
+                    not (canAfford price model)
+              in
+              Html.button
+                [ Html.Events.onClick (Build House)
+                , Html.Attributes.disabled unaffordable
+                ]
+                [ Html.text <| "House " ++ viewPrice price
+                ]
+            ]
+
+        -- SPAWN
+        , let
+            overpopulated =
+                List.length model.villagers >= model.houses * 3
+
+            price =
+                Price.priceOfVillager (List.length model.villagers)
+
+            unaffordable =
+                not (canAfford price model)
+
+            disabled =
+                overpopulated || unaffordable
+          in
+          Html.div
+            []
+            [ Html.span
+                []
+                [ Html.text "Spawn: " ]
+            , Html.button
+                [ Html.Events.onClick (SpawnVillager Job.Farmer)
+                , Html.Attributes.disabled disabled
+                ]
+                [ Html.text <| "Farmer " ++ viewPrice price ]
+            , Html.button
+                [ Html.Events.onClick (SpawnVillager Job.Miner)
+                , Html.Attributes.disabled disabled
+                ]
+                [ Html.text <| "Miner " ++ viewPrice price ]
+            ]
+        , Html.div
+            []
+            [ Html.text "AddSeconds: "
             , Html.button
                 [ Html.Events.onClick (TimeTravel Time.second) ]
-                [ Html.text "+1 second" ]
+                [ Html.text "+1" ]
+            , Html.button
+                [ Html.Events.onClick (TimeTravel (Time.second * 10)) ]
+                [ Html.text "+10" ]
             , Html.button
                 [ Html.Events.onClick (TimeTravel (Time.second * 100)) ]
-                [ Html.text "+10 seconds" ]
+                [ Html.text "+100" ]
             ]
         ]
 
