@@ -1,6 +1,7 @@
 module Main exposing (..)
 
 import AnimationFrame
+import Clock
 import Color
 import Constants
 import Direction
@@ -20,10 +21,6 @@ import Villager exposing (Villager)
 -- MODEL
 
 
-type alias Soldier =
-    {}
-
-
 type alias Position =
     ( Float, Float )
 
@@ -34,6 +31,7 @@ type alias Model =
     , gold : Int
     , food : Int
     , houses : Int
+    , clock : Clock.Clock
     }
 
 
@@ -41,9 +39,12 @@ init : ( Model, Cmd Msg )
 init =
     ( { villagers = []
       , soldiers = []
-      , gold = 10
-      , food = 3
+      , gold = 1000 --10
+      , food = 1000 --3
       , houses = 1
+
+      -- Physics run 30 times per second (fixed time step)
+      , clock = Clock.withPeriod (33 * Time.millisecond)
       }
     , Cmd.none
     )
@@ -237,32 +238,45 @@ update msg model =
 
         Tick diff ->
             let
-                dt =
-                    Time.inSeconds diff
-
-                ( deltaGold, deltaFood, newVillagers ) =
-                    List.foldl
-                        (\villager ( gold, food, villagers ) ->
-                            let
-                                ( producedGold, producedFood, newVillager ) =
-                                    updateVillager dt villager
-                            in
-                            ( gold + producedGold
-                            , food + producedFood
-                            , newVillager :: villagers
-                            )
-                        )
-                        ( 0, 0, [] )
-                        model.villagers
-
-                newModel =
-                    { model
-                        | villagers = newVillagers
-                        , gold = model.gold + deltaGold
-                        , food = model.food + deltaFood
-                    }
+                ( newClock, newModel ) =
+                    Clock.update stepPhysics diff model.clock model
             in
-            ( newModel, Cmd.none )
+            ( { newModel
+                | clock = newClock
+              }
+            , Cmd.none
+            )
+
+
+stepPhysics : Time -> Model -> Model
+stepPhysics diff model =
+    let
+        dt =
+            Time.inSeconds diff
+
+        ( deltaGold, deltaFood, newVillagers ) =
+            List.foldl
+                (\villager ( gold, food, villagers ) ->
+                    let
+                        ( producedGold, producedFood, newVillager ) =
+                            updateVillager dt villager
+                    in
+                    ( gold + producedGold
+                    , food + producedFood
+                    , newVillager :: villagers
+                    )
+                )
+                ( 0, 0, [] )
+                model.villagers
+
+        newModel =
+            { model
+                | villagers = newVillagers
+                , gold = model.gold + deltaGold
+                , food = model.food + deltaFood
+            }
+    in
+    newModel
 
 
 
