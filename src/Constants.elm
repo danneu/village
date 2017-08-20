@@ -11,6 +11,11 @@ roadTileLength =
     10
 
 
+battlegroundTileLength : Float
+battlegroundTileLength =
+    50
+
+
 
 -- Derived
 
@@ -28,3 +33,8 @@ resourceSitePixelWidth =
 roadPixelWidth : Float
 roadPixelWidth =
     roadTileLength * tileSize + villagerSize
+
+
+battlegroundPixelWidth : Float
+battlegroundPixelWidth =
+    battlegroundTileLength * tileSize

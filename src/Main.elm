@@ -372,10 +372,7 @@ viewRoad villagers =
     in
     Element.layers <|
         List.concat
-            [ [ Element.empty
-                    |> Element.width roadPixelWidth
-                    |> Element.height roadPixelHeight
-              , Element.container
+            [ [ Element.container
                     roadPixelWidth
                     roadPixelHeight
                     Element.midLeft
@@ -433,14 +430,34 @@ viewPrice { gold, food } =
             "(" ++ toString gold ++ " gold, " ++ toString food ++ " food)"
 
 
+viewBattleground : Model -> Element.Element
+viewBattleground model =
+    Element.container
+        (round Constants.battlegroundPixelWidth)
+        60
+        Element.midTop
+        (Element.flow Element.down
+            [ Text.fromString "[Battleground]"
+                |> Element.centered
+            , Element.empty
+                |> Element.width (round Constants.battlegroundPixelWidth)
+                |> Element.height 20
+                |> Element.color Color.lightBrown
+            ]
+        )
+        |> Element.color Color.lightCharcoal
+
+
 viewVillage : Model -> Element.Element
 viewVillage model =
     Element.container
         200
         60
-        Element.midTop
+        Element.topLeft
         (Element.flow Element.down
-            [ Text.fromString "[Village]" |> Element.centered
+            [ Element.container 200 20 Element.middle (Text.fromString "[Village]" |> Element.centered)
+            , Text.fromString "[FoodPile]" |> Element.leftAligned
+            , Text.fromString "[GoldPile]" |> Element.leftAligned
             ]
         )
         |> Element.color Color.lightBrown
@@ -476,6 +493,8 @@ view model =
                     ]
                 )
             , viewVillage model
+
+            --, viewBattleground model
             ]
             |> Element.toHtml
 
