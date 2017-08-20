@@ -362,6 +362,13 @@ viewRoad villagers =
 
         roadPixelHeight =
             round <| Constants.tileSize * 2
+
+        -- Returns y-axis offset jitter depending on x (will be >= 0)
+        jitter x =
+            if x % 2 == 0 then
+                0
+            else
+                1
     in
     Element.layers <|
         List.concat
@@ -380,12 +387,14 @@ viewRoad villagers =
                                 pxFromTop =
                                     -- Villagers going left are in top lane
                                     -- Villagers goiing right are in bottom lane
-                                    case direction of
-                                        Direction.Left ->
-                                            0
+                                    jitter (round x)
+                                        + (case direction of
+                                            Direction.Left ->
+                                                0
 
-                                        Direction.Right ->
-                                            round Constants.tileSize
+                                            Direction.Right ->
+                                                round Constants.tileSize
+                                          )
 
                                 position =
                                     Element.topLeftAt (Element.absolute pxFromLeft) (Element.absolute pxFromTop)
@@ -436,11 +445,13 @@ view model =
                 , viewRoad (List.filter Villager.isFarmer model.villagers)
                 , viewVillage
                 ]
+                |> Element.color Color.lightBlue
             , Element.flow Element.right
                 [ viewResourceSite <| viewGoldMine model.villagers
                 , viewRoad (List.filter Villager.isMiner model.villagers)
                 , viewVillage
                 ]
+                |> Element.color Color.lightPurple
             ]
             |> Element.toHtml
 
