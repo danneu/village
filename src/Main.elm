@@ -1,7 +1,6 @@
 module Main exposing (..)
 
 import AnimationFrame
-import Collage
 import Color
 import Constants
 import Direction
@@ -48,22 +47,23 @@ type Msg
     = NoOp
     | Tick Time
     | SpawnVillager Job.Job
+    | TimeTravel Time
 
 
 updateVillager : Float -> Villager -> ( Int, Int, Villager )
 updateVillager dt villager =
     case villager.action of
         Villager.Farming ( curr, target ) ->
-            let
-                newCurr =
-                    curr + (dt * villager.farmingSpeed)
-            in
             if curr >= toFloat target then
                 -- Done harvesting, so walk back to village with resource
+                let
+                    overflow =
+                        curr - toFloat target
+                in
                 ( 0
                 , 0
                 , { villager
-                    | action = Villager.Moving Direction.Right ( 0, 0 )
+                    | action = Villager.Moving Direction.Right ( overflow, 0 )
                     , carrying = Just (Resource.Food target)
                   }
                 )
@@ -72,21 +72,21 @@ updateVillager dt villager =
                 ( 0
                 , 0
                 , { villager
-                    | action = Villager.Farming ( newCurr, target )
+                    | action = Villager.Farming ( curr + (dt * villager.farmingSpeed), target )
                   }
                 )
 
         Villager.Mining ( curr, target ) ->
-            let
-                newCurr =
-                    curr + (dt * villager.miningSpeed)
-            in
             if curr >= toFloat target then
                 -- Done mining, so walk back to village with gold
+                let
+                    overflow =
+                        curr - toFloat target
+                in
                 ( 0
                 , 0
                 , { villager
-                    | action = Villager.Moving Direction.Right ( 0, 0 )
+                    | action = Villager.Moving Direction.Right ( overflow, 0 )
                     , carrying = Just (Resource.Gold target)
                   }
                 )
@@ -95,7 +95,7 @@ updateVillager dt villager =
                 ( 0
                 , 0
                 , { villager
-                    | action = Villager.Mining ( newCurr, target )
+                    | action = Villager.Mining ( curr + (dt * villager.miningSpeed), target )
                   }
                 )
 
@@ -114,13 +114,16 @@ updateVillager dt villager =
                     if movedX <= 0 then
                         -- Reached the resource area, so enter it and start harvesting
                         let
+                            overflow =
+                                abs (0 - movedX)
+
                             newAction =
                                 case villager.job of
                                     Job.Miner ->
-                                        Villager.Mining ( 0, 1 )
+                                        Villager.Mining ( overflow, 1 )
 
                                     Job.Farmer ->
-                                        Villager.Farming ( 0, 1 )
+                                        Villager.Farming ( overflow, 1 )
                         in
                         ( 0
                         , 0
@@ -136,9 +139,12 @@ updateVillager dt villager =
                 Direction.Right ->
                     if movedX >= Constants.roadTileLength then
                         let
+                            overflow =
+                                movedX - Constants.roadTileLength
+
                             newVillager =
                                 { villager
-                                    | action = Villager.Moving Direction.Left ( Constants.roadTileLength, movedY )
+                                    | action = Villager.Moving Direction.Left ( Constants.roadTileLength - overflow, movedY )
                                     , carrying = Nothing
                                 }
                         in
@@ -165,6 +171,9 @@ update msg model =
     case msg of
         NoOp ->
             ( model, Cmd.none )
+
+        TimeTravel diff ->
+            update (Tick diff) model
 
         SpawnVillager job ->
             let
@@ -374,8 +383,16 @@ view model =
         , Html.button
             [ Html.Events.onClick (SpawnVillager Job.Miner) ]
             [ Html.text "Miner" ]
-
-        --, Html.p [] [ Html.text <| toString model.villagers ]
+        , Html.div
+            []
+            [ Html.text "TimeTravel: "
+            , Html.button
+                [ Html.Events.onClick (TimeTravel Time.second) ]
+                [ Html.text "+1 second" ]
+            , Html.button
+                [ Html.Events.onClick (TimeTravel (Time.second * 100)) ]
+                [ Html.text "+10 seconds" ]
+            ]
         ]
 
 
