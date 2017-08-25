@@ -10,6 +10,7 @@ import Html exposing (Html)
 import Html.Attributes
 import Html.Events
 import Job
+import Json.Encode as JE
 import Price
 import Resource
 import Soldier
@@ -69,6 +70,44 @@ type Msg
 updateVillager : Float -> Villager -> ( Int, Int, Villager )
 updateVillager dt villager =
     case villager.action of
+        Villager.Crusading ->
+            -- Nothing for now
+            ( 0, 0, villager )
+
+        Villager.Training ( curr, target ) ->
+            if curr >= toFloat target then
+                -- Done training, so increase xp and walk back to village
+                let
+                    xpPerTraining =
+                        0.1
+
+                    overflow =
+                        curr - toFloat target
+
+                    ( currXp, lvlXp ) =
+                        case villager.job of
+                            Job.Cadet xp ->
+                                xp
+
+                            _ ->
+                                Debug.crash "A non-cadet was training"
+                in
+                ( 0
+                , 0
+                , { villager
+                    | action = Villager.Moving Direction.Right ( overflow, 0 )
+                    , job = Job.Cadet ( currXp + xpPerTraining, lvlXp )
+                  }
+                )
+            else
+                -- Still training
+                ( 0
+                , 0
+                , { villager
+                    | action = Villager.Training ( curr + (dt * villager.trainingSpeed), target )
+                  }
+                )
+
         Villager.Farming ( curr, target ) ->
             if curr >= toFloat target then
                 -- Done harvesting, so walk back to village with resource
@@ -131,6 +170,12 @@ updateVillager dt villager =
 
                                     Job.Farmer ->
                                         Villager.Farming ( overflow, 1 )
+
+                                    Job.Cadet _ ->
+                                        Villager.Training ( overflow, 1 )
+
+                                    _ ->
+                                        Debug.crash "Other jobs cannot be moving left"
                         in
                         ( 0
                         , 0
@@ -158,7 +203,21 @@ updateVillager dt villager =
                         -- Hit village center, so turn in resource and turn around
                         case villager.carrying of
                             Nothing ->
-                                ( 0, 0, newVillager )
+                                -- TODO: this should be done in a different step so that in the future cadets
+                                -- can carry things or something, but for now only cadets can hit the village
+                                -- without carring anything, so let's just check for cadet promotion here.
+                                case villager.job of
+                                    Job.Cadet ( currXp, lvlXp ) ->
+                                        -- If cadet has hit its lvlXp, then turn them into Soldiers
+                                        if currXp >= lvlXp then
+                                            ( 0, 0, { villager | job = Job.Soldier, action = Villager.Crusading } )
+                                            -- Else they walk back to dungeon
+                                        else
+                                            ( 0, 0, newVillager )
+
+                                    _ ->
+                                        -- Not a cadet
+                                        ( 0, 0, newVillager )
 
                             Just (Resource.Gold count) ->
                                 ( count, 0, newVillager )
@@ -227,6 +286,7 @@ update msg model =
                     , movingSpeed = 2.0
                     , miningSpeed = 0.2
                     , farmingSpeed = 0.2
+                    , trainingSpeed = 0.2
                     }
             in
             ( { model
@@ -246,6 +306,14 @@ update msg model =
               }
             , Cmd.none
             )
+
+
+encodeModel : Model -> JE.Value
+encodeModel model =
+    JE.object
+        [ ( "gold", JE.int model.gold )
+        , ( "villagers", JE.list (List.map Villager.encode model.villagers) )
+        ]
 
 
 stepPhysics : Time -> Model -> Model
@@ -354,6 +422,19 @@ viewGoldMine villagers =
         |> Element.centered
 
 
+viewDungeon : List Villager -> Element.Element
+viewDungeon villagers =
+    let
+        occupants =
+            List.length <| List.filter Villager.isTraining villagers
+
+        jobs =
+            List.length <| List.filter Villager.isCadet villagers
+    in
+    (Text.fromString <| "[Dungeon " ++ toString occupants ++ "/" ++ toString jobs ++ "]")
+        |> Element.centered
+
+
 viewRoad : List Villager -> Element.Element
 viewRoad villagers =
     let
@@ -452,12 +533,16 @@ viewVillage : Model -> Element.Element
 viewVillage model =
     Element.container
         200
-        60
+        80
         Element.topLeft
         (Element.flow Element.down
             [ Element.container 200 20 Element.middle (Text.fromString "[Village]" |> Element.centered)
             , Text.fromString "[FoodPile]" |> Element.leftAligned
-            , Text.fromString "[GoldPile]" |> Element.leftAligned
+            , Element.flow Element.right
+                [ Element.container 100 20 Element.midLeft (Text.fromString "[GoldPile]" |> Element.leftAligned)
+                , Element.container 100 20 Element.midRight (Text.fromString "[Barracks]" |> Element.leftAligned)
+                ]
+            , Text.fromString "[Academy]" |> Element.leftAligned
             ]
         )
         |> Element.color Color.lightBrown
@@ -468,14 +553,16 @@ view model =
     Html.div
         [ Html.Attributes.class "container grid-1280" ]
         [ Html.text <| "Gold: " ++ toString model.gold
-        , Html.text " "
+        , Html.text " – "
         , Html.text <| "Food: " ++ toString model.food
-        , Html.text " "
+        , Html.text " – "
         , Html.text <| "Population: " ++ toString (List.length model.villagers) ++ "/" ++ toString (model.houses * 3)
+        , Html.text " – "
+        , Html.text <| "Soldiers: " ++ toString (List.length <| List.filter Villager.isSoldier model.villagers)
         , Element.flow Element.right
             [ Element.container
                 (round (Constants.resourceSitePixelWidth + Constants.roadPixelWidth))
-                60
+                80
                 Element.bottomLeft
                 (Element.flow Element.down
                     [ Element.flow Element.right
@@ -490,6 +577,10 @@ view model =
                         ]
 
                     --|> Element.color Color.lightPurple
+                    , Element.flow Element.right
+                        [ viewResourceSite <| viewDungeon model.villagers
+                        , viewRoad (List.filter Villager.isCadet model.villagers)
+                        ]
                     ]
                 )
             , viewVillage model
@@ -546,6 +637,11 @@ view model =
                 , Html.Attributes.disabled disabled
                 ]
                 [ Html.text <| "Miner " ++ viewPrice price ]
+            , Html.button
+                [ Html.Events.onClick (SpawnVillager (Job.Cadet ( 0, 1 )))
+                , Html.Attributes.disabled disabled
+                ]
+                [ Html.text <| "Cadet " ++ viewPrice price ]
             ]
         , Html.div
             []
@@ -559,6 +655,15 @@ view model =
             , Html.button
                 [ Html.Events.onClick (TimeTravel (Time.second * 100)) ]
                 [ Html.text "+100" ]
+            ]
+        , Html.div
+            []
+            [ Html.ul
+                []
+                [ Html.li [] [ Html.text "Farmers and Miners harvest food and gold." ]
+                , Html.li [] [ Html.text "Cadets fight skeletons in the dungeon til they get promoted into a Soldier (10 trips)." ]
+                , Html.li [] [ Html.text "TODO: Soldiers live in the Barracks and crusade east to fight and conquer lands." ]
+                ]
             ]
         ]
 
