@@ -511,19 +511,30 @@ viewPrice { gold, food } =
             "(" ++ toString gold ++ " gold, " ++ toString food ++ " food)"
 
 
-viewBattleground : Model -> Element.Element
-viewBattleground model =
+viewCrusade : Model -> Element.Element
+viewCrusade model =
+    let
+        bgWidthInt =
+            round Constants.battlegroundPixelWidth
+    in
     Element.container
-        (round Constants.battlegroundPixelWidth)
-        60
+        bgWidthInt
+        80
         Element.midTop
         (Element.flow Element.down
-            [ Text.fromString "[Battleground]"
-                |> Element.centered
+            [ Element.container bgWidthInt
+                20
+                Element.middle
+                (Text.fromString "[Crusade]"
+                    |> Text.color Color.white
+                    |> Element.centered
+                )
+            , Element.container bgWidthInt 20 Element.middle Element.empty
             , Element.empty
-                |> Element.width (round Constants.battlegroundPixelWidth)
+                |> Element.width bgWidthInt
                 |> Element.height 20
                 |> Element.color Color.lightBrown
+            , Element.container bgWidthInt 20 Element.middle Element.empty
             ]
         )
         |> Element.color Color.lightCharcoal
@@ -584,8 +595,7 @@ view model =
                     ]
                 )
             , viewVillage model
-
-            --, viewBattleground model
+            , viewCrusade model
             ]
             |> Element.toHtml
 
